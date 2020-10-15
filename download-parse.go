@@ -84,7 +84,7 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 		// time, open, high, low, close, volume
 		allRecords, err = csvReader.ReadAll()
 		if err != nil {
-			return nil, err
+			fmt.Println(symbol)
 		}
 
 		var records []string                // save memory
@@ -149,7 +149,6 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 			dMonth.Close = dMonth.Days[days[len(days)-1]].Close
 
 			for _, dDay := range dMonth.Days { // calculate day statistics
-
 				// market sometimes closes early or something, get first and last trading point
 				var times []dayTime
 				for key := range dDay.Points {
@@ -164,6 +163,9 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 				}
 				sort.Sort(sDayTime(times))
 
+				if len(times) == 0 { // edge case
+					continue
+				}
 				dDay.Open = dDay.Points[times[0]].Open
 				dDay.Close = dDay.Points[times[len(times)-1]].Close
 
