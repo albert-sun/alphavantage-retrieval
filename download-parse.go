@@ -9,12 +9,14 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const dateFormat = "2006-01-02 15:04:05" // for formatting date from CSV
 var openTime = dayTime{Hour: 9, Minute: 31}
+var banTime = time.Now()
 
 // closeTime found manually since markets sometimes close early
 
@@ -26,7 +28,8 @@ var openTime = dayTime{Hour: 9, Minute: 31}
 func downloadIntradayExt(apiKey string, symbol string) [][]byte {
 	downloaded := make([][]byte, 24)
 
-	// sequentially download to reduce cpu load?
+	// iterate downloading, invalid dates only have headers so safe
+	var respStr string                 // to save memory or something
 	httpClient := fasthttp.Client{}    // default client
 	wg := sync.WaitGroup{}             // for goroutines
 	for year := 1; year <= 2; year++ { // iterate over years
@@ -42,15 +45,28 @@ func downloadIntradayExt(apiKey string, symbol string) [][]byte {
 					"TIME_SERIES_INTRADAY_EXTENDED", symbol, "1min", yearMonth, apiKey,
 				) // downloads 1 minute interval by default
 
+			downloadCSV:
+				if banTime.After(time.Now()) { // global ban for rate limiting
+					time.Sleep(banTime.Sub(time.Now()))
+				}
+
 				// download data (large un-streamed data, add streaming?)
 				response, err := akitohttp.RequestGET(&httpClient, downloadURL)
 				if err != nil { // handle err
 					return // not configured to handle errors...
 				}
 
-				downloaded[index] = make([]byte, len(response.Body()))
-				copy(downloaded[index], response.Body()) // copy(dest, src)
-				index++                                  // increment for next month
+				respStr = string(response.Body())        // for usage, also deep copy
+				if !strings.HasPrefix(respStr, "time") { // not found (website broke or something)
+					fmt.Printf("!! Error downloading CSV for %s [%s] [%s], global ban for 10 seconds ...\n", symbol, respStr[0:10], downloadURL)
+					fasthttp.ReleaseResponse(response) // note: empties response.Body
+					banTime = time.Now().Add(10 * time.Second)
+					time.Sleep(time.Second) // making sure stuff doesn't break?
+					goto downloadCSV
+				}
+
+				downloaded[index] = []byte(respStr) // force deep copy
+				index++                             // increment for next month
 
 				fasthttp.ReleaseResponse(response) // note: empties response.Body
 			}(year, month)
@@ -83,8 +99,9 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 
 		// time, open, high, low, close, volume
 		allRecords, err = csvReader.ReadAll()
-		if err != nil {
+		for err != nil {
 			fmt.Println(symbol)
+			allRecords, err = csvReader.ReadAll()
 		}
 
 		var records []string                // save memory
@@ -97,6 +114,9 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 
 			// parse data to integers/floats as needed
 			// assume that data is always in correct format
+			if len(records) < 6 {
+				fmt.Println(records)
+			}
 			open, _ := strconv.ParseFloat(records[1], 64)
 			high, _ := strconv.ParseFloat(records[2], 64)
 			low, _ := strconv.ParseFloat(records[3], 64)

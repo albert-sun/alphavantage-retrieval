@@ -20,8 +20,9 @@ func main() {
 	allTickerData, _ := csv.NewReader(tickerFile).ReadAll()
 
 	var index int
-	swg := sizedwaitgroup.New(20)
+	swg := sizedwaitgroup.New(5) // too many requests makes the server scream?
 	for _, tickerData := range allTickerData {
+		tickerData[0] = strings.TrimSpace(tickerData[0]) // trim leading and trailing whitespace
 		if tickerData[5] != "Technology" && !strings.Contains(tickerData[3], "B") {
 			continue
 		}
@@ -30,13 +31,13 @@ func main() {
 		go func(symbol string) {
 			defer swg.Done()
 
-			csvData := downloadIntradayExt(apiKey, tickerData[0])
-			ticker, err := parseIntradayExt(csvData, tickerData[0])
+			csvData := downloadIntradayExt(apiKey, symbol)
+			ticker, err := parseIntradayExt(csvData, symbol)
 			if err != nil {
 				panic(err)
 			}
 
-			file, err := os.Create("technology/" + tickerData[0] + ".json")
+			file, err := os.Create("technology/" + symbol + ".json")
 			if err != nil {
 				panic(err)
 			}
