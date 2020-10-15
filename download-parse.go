@@ -53,7 +53,9 @@ func downloadIntradayExt(apiKey string, symbol string) [][]byte {
 				// download data (large un-streamed data, add streaming?)
 				response, err := akitohttp.RequestGET(&httpClient, downloadURL)
 				if err != nil { // handle err
-					return // not configured to handle errors...
+					banTime = time.Now().Add(10 * time.Second)
+					time.Sleep(time.Second) // making sure stuff doesn't break?
+					goto downloadCSV
 				}
 
 				respStr = string(response.Body())                             // for usage, also deep copy

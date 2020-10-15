@@ -40,7 +40,7 @@ func main() {
 
 			file, err := os.Create("intraday-extended/" + symbol + ".json")
 			if err != nil {
-				panic(err)
+				file, _ = os.Create("intraday-extended/" + symbol + "-1.json") // deal with system anmes
 			}
 			marshalled, err := json.Marshal(ticker) // bc pointer
 			if err != nil {
