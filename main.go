@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -24,33 +23,23 @@ func main() {
 	swg := sizedwaitgroup.New(5) // too many requests makes the server scream?
 	for _, tickerData := range allTickerData {
 		tickerData[0] = strings.TrimSpace(tickerData[0]) // trim leading and trailing whitespace
-		if _, err := os.Open("intraday-extended/" + tickerData[0] + ".json"); err == nil {
-			continue
-		}
 
 		swg.Add()
 		go func(symbol string) {
 			defer swg.Done()
 
 			csvData := downloadIntradayExt(apiKey, symbol)
-			ticker, err := parseIntradayExt(csvData, symbol)
-			if err != nil {
-				panic(err)
-			}
+			for ind, csv := range csvData {
+				filename := fmt.Sprintf("year%dmonth%d.csv", ind/12+1, ind%12+1)
+				_ = os.Mkdir(fmt.Sprintf("intraday-extended-csv/%s", symbol), 0755)
+				file, _ := os.Create(fmt.Sprintf("intraday-extended-csv/%s/%s", symbol, filename))
 
-			file, err := os.Create("intraday-extended/" + symbol + ".json")
-			if err != nil {
-				file, _ = os.Create("intraday-extended/" + symbol + "-1.json") // deal with system anmes
+				_, _ = file.Write(csv)
+				_ = file.Close()
 			}
-			marshalled, err := json.Marshal(ticker) // bc pointer
-			if err != nil {
-				panic(err)
-			}
-			_, _ = file.Write(marshalled)
-			_ = file.Close()
 
 			index++
-			fmt.Printf("[%d] Finished downloading and parsing intraday extended trading data for %s ...\n", index, symbol)
+			fmt.Printf("[%d] Finished caching CSV data for %s ...\n", index, symbol)
 		}(tickerData[0])
 	}
 
