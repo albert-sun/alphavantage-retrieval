@@ -24,8 +24,6 @@ var openTime = dayTime{Hour: 9, Minute: 31}
 // previous month's data would have index 1 while the current month's data would have index 0.
 // If an error is encountered, returns a nil slice of string-converted response bodies and the appropriate error.
 func downloadIntradayExt(apiKey string, symbol string) [][]byte {
-	fmt.Printf("Downloading intraday extended trading data for %s ...\n", symbol)
-
 	downloaded := make([][]byte, 24)
 
 	// sequentially download to reduce cpu load?
@@ -60,8 +58,6 @@ func downloadIntradayExt(apiKey string, symbol string) [][]byte {
 	}
 	wg.Wait()
 
-	fmt.Printf("Finished downloading %s CSV data\n", symbol)
-
 	return downloaded
 }
 
@@ -80,8 +76,7 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 
 	// parse csv data into struct
 	var err error
-	var allRecords [][]string // save memory
-	fmt.Printf("Parsing %s CSV data to struct ...\n", symbol)
+	var allRecords [][]string      // save memory
 	for _, data := range csvData { // iterate over downloaded files
 		csvReader := csv.NewReader(bytes.NewReader(data)) // init csv reader
 		_, _ = csvReader.Read()                           // read and ignore headers
@@ -139,10 +134,8 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 
 	// calculate statistical data (all by day?)
 	// assume that all statistics are initialized as zero
-	for year, dYear := range ticker.Years { // calculate year statistics
-		for month, dMonth := range dYear.Months { // calculate month statistics
-			fmt.Printf("Calculating statistics for %d/%d ...\n", month, year)
-
+	for _, dYear := range ticker.Years { // calculate year statistics
+		for _, dMonth := range dYear.Months { // calculate month statistics
 			// find first and last trading day
 			var index int
 			days := make([]int, len(dMonth.Days))
@@ -157,19 +150,21 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 
 			for _, dDay := range dMonth.Days { // calculate day statistics
 
-				// market sometimes closes early or something, get last trading point
+				// market sometimes closes early or something, get first and last trading point
 				var times []dayTime
 				for key := range dDay.Points {
-					// exclude after-hours trading closing time
+					// exclude premarket and after-hours trading times
 					if (key.Hour > 16) || (key.Hour == 16 && key.Minute > 0) {
 						continue
+					} else if (key.Hour < 9) || (key.Hour == 9 && key.Minute <= 30) {
+
 					}
 
 					times = append(times, key)
 				}
 				sort.Sort(sDayTime(times))
 
-				dDay.Open = dDay.Points[openTime].Open
+				dDay.Open = dDay.Points[times[0]].Open
 				dDay.Close = dDay.Points[times[len(times)-1]].Close
 
 				dDay.High = 0                           // init high
