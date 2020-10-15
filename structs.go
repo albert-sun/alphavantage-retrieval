@@ -33,6 +33,7 @@ type pricing struct {
 
 // yearData contains year-long statistical data and month structures.
 type yearData struct {
+	pricing
 	Months map[int]*monthData // per month
 }
 

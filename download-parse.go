@@ -56,9 +56,9 @@ func downloadIntradayExt(apiKey string, symbol string) [][]byte {
 					return // not configured to handle errors...
 				}
 
-				respStr = string(response.Body())        // for usage, also deep copy
-				if !strings.HasPrefix(respStr, "time") { // not found (website broke or something)
-					fmt.Printf("!! Error downloading CSV for %s [%s] [%s], global ban for 10 seconds ...\n", symbol, respStr[0:10], downloadURL)
+				respStr = string(response.Body())                             // for usage, also deep copy
+				if !strings.HasPrefix(respStr, "time") || len(respStr) < 10 { // not found (website broke or something)
+					fmt.Printf("!! Error downloading CSV for %s [%s], global ban for 10 seconds ...\n", symbol, downloadURL)
 					fasthttp.ReleaseResponse(response) // note: empties response.Body
 					banTime = time.Now().Add(10 * time.Second)
 					time.Sleep(time.Second) // making sure stuff doesn't break?
@@ -155,19 +155,11 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 	// calculate statistical data (all by day?)
 	// assume that all statistics are initialized as zero
 	for _, dYear := range ticker.Years { // calculate year statistics
+		dYear.High = 0                        // init high
+		dYear.Low = math.MaxFloat64           // init low
 		for _, dMonth := range dYear.Months { // calculate month statistics
-			// find first and last trading day
-			var index int
-			days := make([]int, len(dMonth.Days))
-			for key := range dMonth.Days {
-				days[index] = key
-				index++
-			}
-			sort.Ints(days)
-
-			dMonth.Open = dMonth.Days[days[0]].Open
-			dMonth.Close = dMonth.Days[days[len(days)-1]].Close
-
+			dMonth.High = 0                    // init high
+			dMonth.Low = math.MaxFloat64       // init low
 			for _, dDay := range dMonth.Days { // calculate day statistics
 				// market sometimes closes early or something, get first and last trading point
 				var times []dayTime
@@ -176,7 +168,7 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 					if (key.Hour > 16) || (key.Hour == 16 && key.Minute > 0) {
 						continue
 					} else if (key.Hour < 9) || (key.Hour == 9 && key.Minute <= 30) {
-
+						continue
 					}
 
 					times = append(times, key)
@@ -194,19 +186,58 @@ func parseIntradayExt(csvData [][]byte, symbol string) (*tickerData, error) {
 				for dTime, point := range dDay.Points { // iterate over price points
 					// exclude premarket (9:30 inclusive) and aftermarket (16:00 exclusive)
 					if !((dTime.Hour <= 9 && dTime.Minute <= 30) || (dTime.Hour >= 16 && dTime.Minute > 0)) {
-						dDay.Volume += point.Volume // add volume for later division
-
-						// process high and low prices
+						// process volume, high and low prices
 						if point.High > dDay.High {
 							dDay.High = point.High
 						}
-						if point.High < dDay.High {
-							dDay.High = point.High
+						if point.Low < dDay.Low {
+							dDay.Low = point.Low
 						}
+						dDay.Volume += point.Volume // add volume for later division
 					}
 				}
+				// process volume, high and low prices
+				if dDay.High > dMonth.High {
+					dMonth.High = dDay.High
+				}
+				if dDay.Low < dMonth.Low {
+					dMonth.Low = dDay.Low
+				}
+				dMonth.Volume += dDay.Volume
 			}
+			// process high and low prices
+			if dMonth.High > dYear.High {
+				dYear.High = dMonth.High
+			}
+			if dMonth.Low < dYear.Low {
+				dYear.Low = dMonth.Low
+			}
+			dYear.Volume += dMonth.Volume
+
+			// find first and last trading day
+			var index int
+			days := make([]int, len(dMonth.Days))
+			for key := range dMonth.Days {
+				days[index] = key
+				index++
+			}
+			sort.Ints(days)
+
+			dMonth.Open = dMonth.Days[days[0]].Open
+			dMonth.Close = dMonth.Days[days[len(days)-1]].Close
 		}
+
+		// find first and last trading month
+		var index int
+		months := make([]int, len(dYear.Months))
+		for key := range dYear.Months {
+			months[index] = key
+			index++
+		}
+		sort.Ints(months)
+
+		dYear.Open = dYear.Months[months[0]].Open
+		dYear.Close = dYear.Months[months[len(months)-1]].Close
 	}
 
 	return &ticker, nil

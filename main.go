@@ -18,12 +18,13 @@ func main() {
 		panic(err)
 	}
 	allTickerData, _ := csv.NewReader(tickerFile).ReadAll()
+	allTickerData = allTickerData[1 : len(allTickerData)-1] // ignore header
 
 	var index int
 	swg := sizedwaitgroup.New(5) // too many requests makes the server scream?
 	for _, tickerData := range allTickerData {
 		tickerData[0] = strings.TrimSpace(tickerData[0]) // trim leading and trailing whitespace
-		if tickerData[5] != "Technology" && !strings.Contains(tickerData[3], "B") {
+		if _, err := os.Open("intraday-extended/" + tickerData[0] + ".json"); err == nil {
 			continue
 		}
 
@@ -37,7 +38,7 @@ func main() {
 				panic(err)
 			}
 
-			file, err := os.Create("technology/" + symbol + ".json")
+			file, err := os.Create("intraday-extended/" + symbol + ".json")
 			if err != nil {
 				panic(err)
 			}
