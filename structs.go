@@ -56,10 +56,10 @@ type dayTime struct {
 
 // custom marshal keys (HH:MM)
 func (d dayTime) MarshalJSON() ([]byte, error) {
-	return json.Marshal(fmt.Sprintf("%2d:%2d", d.Hour, d.Minute))
+	return json.Marshal(fmt.Sprintf("%02d:%02d", d.Hour, d.Minute))
 }
 func (d dayTime) MarshalText() (text []byte, err error) {
-	return []byte(fmt.Sprintf("%2d:%2d", d.Hour, d.Minute)), nil
+	return []byte(fmt.Sprintf("%02d:%02d", d.Hour, d.Minute)), nil
 }
 
 type sDayTime []dayTime // for sorting purposes
