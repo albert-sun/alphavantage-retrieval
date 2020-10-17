@@ -4,7 +4,7 @@ import (
 	akitohttp "akito/packages/http"
 	"context"
 	"github.com/valyala/fasthttp"
-	"sync"
+	"time"
 )
 
 // alphaResult contains the request URL, fields for placing the body and error, and a notification channel.
@@ -19,7 +19,7 @@ type alphaResult struct {
 // Mostly implements thread-limiting for preventing server-sided issues.
 type alphaClient struct {
 	apiKey       string
-	limit        int                // max download threads
+	limit        int                // max requests per minute
 	killCtx      context.Context    // for managing and killing goroutines
 	killFunc     context.CancelFunc // ^^
 	httpClient   *fasthttp.Client   // shared http client (doesn't exceed connection limit)
@@ -50,28 +50,25 @@ func newAlphaClient(apiKey string, limit int) *alphaClient {
 // handleRequests concurrently handles requests using the dirty method of maintaining consumer goroutines.
 // All underlying goroutines can be cancelled through client.killCtx.
 func (client *alphaClient) handleRequests() {
-	wg := sync.WaitGroup{}              // for managing underlying
-	for i := 0; i < client.limit; i++ { // create goroutines
-		wg.Add(1)
-		go func() { // actual perpetual request handler
-			defer wg.Done()
-
-			for {
-				select {
-				case result := <-client.requestsChan: // received request url
-					response, err := akitohttp.RequestGET(client.httpClient, result.url) // perform request
-					if err != nil {
-						result.err = err // keep body == nil
-					} else {
-						result.body = []byte(string(response.Body())) // deep copy, should work
-					}
-
-					result.notif <- struct{}{} // send notification of completion
+	for {
+		select {
+		case result := <-client.requestsChan: // received request url
+			go func(res *alphaResult) {
+				response, err := akitohttp.RequestGET(client.httpClient, res.url) // perform request
+				if err != nil {
+					res.err = err // keep body == nil
+				} else {
+					res.body = []byte(string(response.Body())) // deep copy, should work
 					fasthttp.ReleaseResponse(response)
-				case <-client.killCtx.Done(): // goroutines killed
-					return
 				}
-			}
-		}()
+
+				res.notif <- struct{}{} // send notification of completion
+			}(result)
+		case <-client.killCtx.Done(): // goroutines killed
+			return
+		}
+
+		// primitive rate limit method: wait constant time
+		time.Sleep(time.Duration(60/client.limit) * time.Second)
 	}
 }

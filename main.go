@@ -22,7 +22,7 @@ var functionMap = map[string]string{
 
 func main() {
 	fmt.Println("Initializing client before caching ...")
-	client := newAlphaClient("6XOID1CXG2FACMV8", 5) // initialize client
+	client := newAlphaClient("KMYXJ842XBY3XWKQ", 25) // initialize client, 25<30
 
 	// read and parse ticker data from file
 	tickerFile, _ := os.Open("companylist.csv") // lazy
@@ -42,10 +42,19 @@ func main() {
 			defer swg.Done()
 
 			for folderName, downloadURL := range functionMap {
+				// check whether file already exists, skip if so
+				if _, err := os.Open(fmt.Sprintf("%s/%s.json", folderName, symbol)); err == nil {
+					continue
+				}
+
 				downloadData, err := client.download(fmt.Sprintf(downloadURL, symbol, client.apiKey))
 				if err != nil {
 					fmt.Printf("Error downloading [%s] data for %s\n", folderName, symbol)
 				} else { // save data as json
+					if strings.Contains(string(downloadData), `"Note"`) { // check rate limit
+						fmt.Println("!! Warning: rate limiting in effect")
+					}
+
 					file, err := os.Create(fmt.Sprintf("%s/%s.json", folderName, symbol))
 					if err != nil { // system-restricted name
 						file, _ = os.Create(fmt.Sprintf("%s/%s_.json", folderName, symbol))
